@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="IsoTracks">
+  <path d="M 40 42.6 Q 51.0 29.0 62 42.6" fill="none" stroke="#7C8AA0" stroke-width="2.08"/>
+  <rect x="8" y="33.0" width="32" height="19.2" rx="4.8" fill="#0E9BBF"/>
+  <rect x="62" y="33.0" width="34" height="19.2" rx="4.8" fill="#0E9BBF"/>
+  <path d="M 18 34.0 V 20.2" stroke="#8B5CF6" stroke-width="1.92"/>
+  <circle cx="18" cy="20.2" r="3.36" fill="#8B5CF6"/>
+  <path d="M 30 34.0 V 15.4" stroke="#8B5CF6" stroke-width="1.92"/>
+  <circle cx="30" cy="15.4" r="3.36" fill="#8B5CF6"/>
+  <path d="M 72 34.0 V 17.0" stroke="#8B5CF6" stroke-width="1.92"/>
+  <circle cx="72" cy="17.0" r="3.36" fill="#8B5CF6"/>
+  <path d="M 86 34.0 V 21.8" stroke="#8B5CF6" stroke-width="1.92"/>
+  <circle cx="86" cy="21.8" r="3.36" fill="#8B5CF6"/>
+  <path d="M 8 67.56 H 96" stroke="#7C8AA0" stroke-width="1.28"/>
+  <path d="M 8 65.00 h 32 v 5.12 h -32 ZM 62 65.00 h 34 v 5.12 h -34 Z" fill="#0E9BBF"/>
+  <rect x="96" y="65.00" width="26" height="5.12" rx="2.56" fill="#EA580C"/>
+  <rect x="96" y="65.00" width="5.12" height="5.12" fill="#EA580C"/>
+  <path d="M 8 77.48 H 96" stroke="#7C8AA0" stroke-width="1.28"/>
+  <path d="M 8 74.92 h 32 v 5.12 h -32 ZM 62 74.92 h 34 v 5.12 h -34 Z" fill="#0E9BBF"/>
+  <rect x="96" y="74.92" width="19" height="5.12" rx="2.56" fill="#EA580C"/>
+  <rect x="96" y="74.92" width="5.12" height="5.12" fill="#EA580C"/>
+  <path d="M 62 87.40 H 96" stroke="#7C8AA0" stroke-width="1.28"/>
+  <path d="M 62 84.84 h 34 v 5.12 h -34 Z" fill="#0E9BBF"/>
+  <rect x="96" y="84.84" width="12" height="5.12" rx="2.56" fill="#EA580C"/>
+  <rect x="96" y="84.84" width="5.12" height="5.12" fill="#EA580C"/>
+  <path d="M 8 97.32 H 96" stroke="#7C8AA0" stroke-width="1.28"/>
+  <path d="M 8 94.76 h 32 v 5.12 h -32 ZM 62 94.76 h 34 v 5.12 h -34 Z" fill="#0E9BBF"/>
+  <rect x="96" y="94.76" width="7" height="5.12" rx="2.56" fill="#EA580C"/>
+  <rect x="96" y="94.76" width="3.50" height="5.12" fill="#EA580C"/>
+  <path d="M 8 111.0 H 122 M 8.0 111.0 v 5.4 M 46.0 111.0 v 5.4 M 84.0 111.0 v 5.4 M 122.0 111.0 v 5.4 " fill="none" stroke="#7C8AA0" stroke-width="1.60" stroke-linecap="round"/>
+</svg>
