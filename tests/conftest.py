@@ -108,10 +108,9 @@ def _write_bam(path, reads, reverse=False):
     header = {"HD": {"VN": "1.6", "SO": "coordinate"},
               "SQ": [{"SN": CHROM, "LN": CHROM_LENGTH}]}
     with pysam.AlignmentFile(str(path), "wb", header=header) as out:
-        for name, spans, polya in sorted(reads, key=lambda r: r[1][0][0]):
+        for name, spans, polya, *strand in sorted(reads, key=lambda r: r[1][0][0]):
             read = _make_read(out.header, name, spans, polya)
-            # A reverse alignment is how a minus-strand transcript arrives.
-            read.is_reverse = reverse
+            read.is_reverse = strand[0] if strand else reverse
             out.write(read)
     pysam.index(str(path))
     return str(path)
@@ -606,3 +605,53 @@ def fusion_tables_isoforms(fusion_tables, tmp_path_factory):
     pq.write_table(isoforms, prefix + "_isoforge_fusion_isoforms.parquet")
     assert os.path.exists(prefix + "_isoforge_fusion_isoforms.parquet")
     return prefix
+
+
+# ------------------------------------------------ a gene and its antisense partner
+
+#: Genes around TESTG: one on the opposite strand overlapping its 3' end, one on the
+#: opposite strand far away, one on the same strand next to it.
+ANTISENSE_GENES = {
+    "ANTI": ("-", {"AS_LONG": [(4_500, 4_700), (6_200, 6_600), (7_400, 7_700), (9_000, 9_400)],
+                   "AS_SHORT": [(8_000, 8_300), (9_000, 9_400)]}),
+    "FAR": ("-", {"FAR_1": [(15_000, 15_400), (16_000, 16_300)]}),
+    "NEIGH": ("+", {"NEIGH_1": [(6_900, 7_000), (7_200, 7_500)]}),
+}
+
+
+@pytest.fixture(scope="session")
+def antisense_kwargs(tmp_path_factory):
+    """TESTG with genes around it, their reads on both strands in one set of BAMs."""
+    directory = tmp_path_factory.mktemp("isotracks_antisense")
+    genes = {GENE: ("+", ISOFORMS), **ANTISENSE_GENES}
+
+    lines = []
+    for gene, (strand, isoforms) in genes.items():
+        for tid, spans in isoforms.items():
+            attrs = f'gene_id "{gene}"; gene_name "{gene}"; transcript_id "{tid}";'
+            for feature, a, b in [("transcript", spans[0][0], spans[-1][1])] + [
+                    ("exon", a, b) for a, b in spans]:
+                lines.append("\t".join([CHROM, "test", feature, str(a), str(b), ".",
+                                        strand, ".", attrs]))
+    gtf = directory / "antisense.gtf"
+    gtf.write_text("\n".join(lines) + "\n")
+
+    bams, annot = {}, ["\t".join(["read_name", "sample", "Chromosome", "Strand",
+                                  "annot_gene_name", "transcript_id"])]
+    for condition, tail_base in (("Ctrl", 60), ("Trt", 180)):
+        paths = []
+        for replicate in (1, 2):
+            sample = f"{condition}_rep{replicate}"
+            reads = []
+            for gene, (strand, isoforms) in genes.items():
+                for tid, spans in isoforms.items():
+                    for index in range(6 if gene == GENE else 3):
+                        name = f"{sample}|{tid}_read{index}"
+                        reads.append((name, spans, tail_base + index * 10, strand == "-"))
+                        annot.append("\t".join([name, sample, CHROM, strand, gene, tid]))
+            paths.append(_write_bam(directory / f"{sample}.bam", reads))
+        bams[condition] = paths
+    read_annot = directory / "read_annot.tsv"
+    read_annot.write_text("\n".join(annot) + "\n")
+    return dict(gene_name=GENE, bam_files=bams, annotation_gtf=str(gtf),
+                read_annot=str(read_annot), min_reads=1, verbose=False)

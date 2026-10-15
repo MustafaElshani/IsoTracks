@@ -88,6 +88,11 @@ MOD_REGIONS = (MOD_REGIONS_EXONS, MOD_REGIONS_WINDOW)
 COVERAGE_DRAWN = "drawn"
 COVERAGE_GENE = "gene"
 COVERAGE_READS = (COVERAGE_DRAWN, COVERAGE_GENE)
+
+#: How genes on the opposite strand are drawn: clipped to the window, or whole.
+ANTISENSE_WINDOW = "window"
+ANTISENSE_WHOLE = "whole"
+ANTISENSE = (ANTISENSE_WINDOW, ANTISENSE_WHOLE)
 #: Formats written when ``output`` names no extension.
 DEFAULT_FORMATS = ("pdf", "png")
 #: Columns of :meth:`IsoTracks.isoform_table`.
@@ -264,6 +269,10 @@ class IsoTracks:
     coverage_reads : {"drawn", "gene"}
         Build coverage from the reads of the drawn isoforms, or from every read of
         the gene.
+    antisense : {None, "window", "whole"}
+        Also draw the genes transcribed from the opposite strand in the window, each
+        with its isoforms, reads and coverage below the gene's own.  ``"whole"``
+        widens the window to draw them whole; ``True`` means ``"window"``.
     min_reads : int
         Least reads per isoform, summed over conditions.
     min_reads_per_condition : int, optional
@@ -314,6 +323,7 @@ class IsoTracks:
         balanced_diff: bool = False,
         mod_regions: str = MOD_REGIONS_EXONS,
         coverage_reads: str = COVERAGE_DRAWN,
+        antisense: Union[bool, str, None] = None,
         min_reads: int = 5,
         min_reads_per_condition: Optional[int] = None,
         max_isoforms: Optional[int] = DEFAULT_MAX_ISOFORMS,
@@ -361,6 +371,9 @@ class IsoTracks:
         self.mod_regions = _one_of(mod_regions, MOD_REGIONS, "mod_regions")
         self.coverage_reads = _one_of(coverage_reads, COVERAGE_READS,
                                       "coverage_reads")
+        if antisense is True:
+            antisense = ANTISENSE_WINDOW
+        self.antisense = _one_of(antisense, ANTISENSE, "antisense") if antisense else None
         self.min_reads = min_reads
         self.min_reads_per_condition = min_reads_per_condition
         self.max_isoforms = max_isoforms
@@ -400,6 +413,8 @@ class IsoTracks:
         self._isoform_colors: Dict[str, str] = {}
         self._bed_frame: Optional[pd.DataFrame] = None
         self._window: Optional[Tuple] = None
+        self._antisense_views: Dict[Tuple[str, int, int], List["IsoTracks"]] = {}
+        self._antisense_span: Optional[Tuple] = None
         self.canvas: Optional[Canvas] = None
         self.figure = None
 
@@ -875,6 +890,9 @@ class IsoTracks:
         if mode == INTRON_GENOMIC:
             return None
         exons = self.drawn_exons(self.transcripts() or sorted(self.model_transcripts()))
+        if self.antisense:
+            for view in self.antisense_views(self._antisense_span or window):
+                exons = merge_intervals(list(exons) + view.drawn_exons())
         intron_map = build_intron_map(exons, window, mode, share)
         if intron_map is None:
             self._say(f"  introns={mode!r}: nothing to shorten in this window, "
@@ -1136,8 +1154,87 @@ class IsoTracks:
         start, end = bounds if bounds else (gene_start, gene_end)
 
         if strand == "+":
-            return (chrom, max(1, start - FIVE_PRIME_PADDING), end + padding, strand)
-        return (chrom, max(1, start - padding), end + FIVE_PRIME_PADDING, strand)
+            window = (chrom, max(1, start - FIVE_PRIME_PADDING), end + padding, strand)
+        else:
+            window = (chrom, max(1, start - padding), end + FIVE_PRIME_PADDING, strand)
+        if self.antisense == ANTISENSE_WHOLE:
+            self._antisense_span = window
+            for view in self.antisense_views(window):
+                _, low, high, _ = view.display_region(padding)
+                window = (chrom, min(window[1], low), max(window[2], high), strand)
+        return window
+
+    # ------------------------------------------------------ opposite strand
+
+    def antisense_views(self, span: Sequence) -> List["IsoTracks"]:
+        """A view of each gene on the opposite strand with isoforms drawn in *span*."""
+        key = (str(span[0]), int(span[1]), int(span[2]))
+        if key in self._antisense_views:
+            return self._antisense_views[key]
+        index = self._annotation_index or self._reference_index
+        opposite = "-" if self.strand == "+" else "+"
+        names = [name for name in index.genes_overlapping(*key, strand=opposite)
+                 if name != self.gene_name] if index else []
+        views = []
+        for name in names:
+            view = self._opposite_view(name)
+            if self.antisense == ANTISENSE_WINDOW:
+                view.keep_transcripts_in(key)
+            if view.transcripts():
+                views.append(view)
+        drawn = list(self.transcripts()) + [t for v in views for t in v.transcripts()]
+        palette = self.theme.isoform_palette(drawn)
+        for view in views:
+            view._isoform_colors = {t: palette[t] for t in view.transcripts()}
+        self._say(f"  opposite strand: {', '.join(v.gene_name for v in views) or 'nothing drawn'}"
+                  + (f" (of {', '.join(names)})" if len(names) > len(views) else ""))
+        self._antisense_views[key] = views
+        return views
+
+    def _opposite_view(self, gene_name: str) -> "IsoTracks":
+        """A view of *gene_name* with this view's inputs and settings."""
+        view = IsoTracks(
+            gene_name=gene_name, bam_files=self.bam_files,
+            reference_gtf=self.reference_gtf, annotation_gtf=self.annotation_gtf,
+            bed_file=self.bed_file, read_filter=self.read_filter,
+            coverage_reads=self.coverage_reads, min_reads=self.min_reads,
+            min_reads_per_condition=self.min_reads_per_condition,
+            max_isoforms=self.max_isoforms, condition_labels=self.condition_labels,
+            condition_colors=self.condition_colors, polya_scale=self.polya_scale,
+            theme=self.theme, layout=self.layout, verbose=self.verbose,
+        )
+        view._read_annotation = self._read_annotation
+        return view
+
+    def keep_transcripts_in(self, span: Sequence) -> None:
+        """Draw only the isoforms that overlap *span*."""
+        frame = (self._annotation_index.gene_records(self.gene_name).transcripts
+                 if self._annotation_index else pd.DataFrame())
+        if frame.empty:
+            return
+        low, high = int(span[1]), int(span[2])
+        inside = set(frame.loc[(frame["start"] <= high) & (frame["end"] >= low), "transcript_id"])
+        self._transcripts = [t for t in self.transcripts() if t in inside]
+
+    def _add_strand_section(self, canvas: Canvas, conditions: Sequence[str],
+                            labels: Mapping[str, str], sort_style: str,
+                            max_reads: Optional[int]) -> None:
+        """This gene below a rule: its gene row, isoforms, reads and coverage."""
+        transcripts = self.transcripts()
+        features = self.gene_model_features(transcripts)
+        if features:
+            canvas.add(
+                "GeneModelTrack", label=f"{self.gene_name} ({self.strand})",
+                reader=BedTranscripts(features=features), height=self.layout.gene_model,
+                label_weight="bold", rule_above=True,
+            )
+        self._add_transcript_tracks(canvas, transcripts)
+        self._add_read_tracks(
+            canvas, transcripts, conditions, labels, self.gene_reads.reads_by_transcript,
+            self.gene_reads.polya_lengths(), sort_style, max_reads,
+        )
+        self._add_coverage_tracks(canvas, conditions, labels,
+                                  self._coverage_read_names(transcripts))
 
     def polya_sites(self) -> pd.DataFrame:
         """Poly(A) clusters matching a 3' end of one of the drawn isoforms."""
@@ -1196,10 +1293,14 @@ class IsoTracks:
         coverage_reads = self._coverage_read_names(transcripts)
         polya_fallback = self.gene_reads.polya_lengths()
 
+        opposite = (self.antisense_views(self._antisense_span or self._window)
+                    if self.antisense else [])
         gutter_labels = ([shorten_label(t) for t in transcripts] + list(labels.values())
-                         + list(self.mod_diff) + ["read ends", "poly(A)"])
-        gutter_in = self.layout.gutter_width_for(
-            gutter_labels, bold=[self.gene_name] if self.gene_name else [])
+                         + list(self.mod_diff) + ["read ends", "poly(A)"]
+                         + [shorten_label(t) for v in opposite for t in v.transcripts()])
+        bold = ([self.gene_name] if self.gene_name else []) + [
+            f"{v.gene_name} ({v.strand})" for v in opposite]
+        gutter_in = self.layout.gutter_width_for(gutter_labels, bold=bold)
         canvas = Canvas(gutter_in=gutter_in)
 
         self._add_site_tracks(canvas)
@@ -1213,6 +1314,8 @@ class IsoTracks:
         self._add_modification_tracks(canvas, conditions, labels)
         self._add_mod_diff_tracks(canvas)
         self._add_coverage_tracks(canvas, conditions, labels, coverage_reads)
+        for view in opposite:
+            view._add_strand_section(canvas, conditions, labels, sort_style, max_reads)
         canvas.add("ScaleBarTrack", height=self.layout.scale_bar)
         canvas.add("CoordinateAxisTrack", height=self.layout.axis,
                    gene=self.gene_name or "")
@@ -1491,7 +1594,7 @@ class IsoTracks:
                 reader=_coverage_reader(self.bam_files[condition], self.strand, read_filter),
                 height=self.layout.coverage,
                 color=self.condition_colors.get(condition, self.theme.isoform_color(0)),
-                rule_above=position == 0,
+                rule_above=position == 0, scale_group=self.gene_name or "",
             )
 
     # ------------------------------------------------------------- plotting
@@ -1634,15 +1737,18 @@ class IsoTracks:
 
     @staticmethod
     def _share_coverage_scale(canvas: Canvas) -> None:
-        """One depth axis across every coverage track, so heights compare."""
-        tracks = canvas.of_type("CoverageTrack")
-        if len(tracks) < 2:
-            return
-        for track in tracks:
-            track.load_region_data()
-        high = max(track.preferred_ylim()[1] for track in tracks)
-        for track in tracks:
-            track.force_ylim(0.0, high)
+        """One depth axis across each gene's coverage tracks, so heights compare."""
+        groups: Dict[str, List] = {}
+        for track in canvas.of_type("CoverageTrack"):
+            groups.setdefault(track.config.get("scale_group", ""), []).append(track)
+        for tracks in groups.values():
+            if len(tracks) < 2:
+                continue
+            for track in tracks:
+                track.load_region_data()
+            high = max(track.preferred_ylim()[1] for track in tracks)
+            for track in tracks:
+                track.force_ylim(0.0, high)
 
     # ------------------------------------------------------------ tabular
 

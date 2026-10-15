@@ -213,3 +213,11 @@ def test_the_logo_is_drawn_without_fonts_in_the_file():
         pass                                    # the name's font is not installed here
     for svg in drawings:
         assert svg.startswith("<svg") and "<text" not in svg and "font-family" not in svg
+
+
+def test_a_width_is_a_preset_a_number_or_a_number_as_text():
+    assert Theme(width="double").width_mm == 183.0
+    assert Theme(width=176).width_mm == 176.0
+    assert Theme(width="176").width_mm == 176.0
+    with pytest.raises(ValueError, match="unknown width"):
+        Theme(width="wide").width_mm

@@ -63,6 +63,7 @@ class FeatureTrack(Track):
         "thin_height": 0.45,  # fraction of the row a UTR fills
         "intron_height": 0.16,  # fraction of the row the intron hairline fills
         "min_intron_fraction": 0.008,  # widen introns below this share of the view
+        "min_body_width_pt": 0.5,  # narrowest an exon is drawn, times the stroke weight
         "hollow_utr": False,  # draw untranslated blocks as outlines
         "direction_arrows": False,  # chevrons along the introns
         "arrow_spacing_in": 0.28,  # inches between direction chevrons
@@ -79,6 +80,7 @@ class FeatureTrack(Track):
             "intron": {"facecolor": "#C0C6CE", "edgecolor": "none", "zorder": 9},
         },
     }
+    _min_body = 0.0
 
     # ------------------------------------------------------------- filtering
 
@@ -200,6 +202,7 @@ class FeatureTrack(Track):
         )
 
         metrics = self._metrics = self._row_metrics(len(df))
+        self._min_body = self._min_body_units()
         batch = _RectBatch()
         for feature in self.region_data:
             self._draw_feature(feature, batch, metrics)
@@ -244,6 +247,26 @@ class FeatureTrack(Track):
         self._dense_intron_alpha = metrics["intron"]
         return {"gap": 0.0, "body": 1.0, "thin": 1.0, "intron": 1.0}
 
+    def _min_body_units(self) -> float:
+        """The narrowest a body is drawn, in drawn units of the x-axis."""
+        width_pt = float(self.config.get("min_body_width_pt") or 0.0) * self.theme.stroke
+        axes_in = self.ax.get_window_extent().width / self.ax.figure.dpi
+        if width_pt <= 0 or axes_in <= 0:
+            return 0.0
+        to_drawn, _ = self._drawn_units()
+        low, high = sorted((float(self.region_start), float(self.region_end)))
+        span = float(to_drawn(high) - to_drawn(low))
+        return span * width_pt / 72.0 / axes_in
+
+    def _widened(self, left: float, right: float) -> Tuple[float, float]:
+        """*left* to *right*, widened about its centre to the narrowest drawn body."""
+        to_drawn, to_genomic = self._drawn_units()
+        low, high = float(to_drawn(left)), float(to_drawn(right))
+        if high - low >= self._min_body:
+            return left, right
+        middle, half = (low + high) / 2.0, self._min_body / 2.0
+        return float(to_genomic(middle - half)), float(to_genomic(middle + half))
+
     def _draw_feature(self, feature: Feature, batch: _RectBatch,
                       metrics: Optional[Dict[str, float]] = None) -> None:
         if feature.chr_name and feature.chr_name != self.chr_name:
@@ -273,9 +296,11 @@ class FeatureTrack(Track):
             fraction = metrics["body"]
 
         bottom, part_height = self._band(row_low, row_high, fraction)
-        width = feature.end - feature.start + 1
-        if width <= 0:
+        if feature.end - feature.start + 1 <= 0:
             return
+        left, right = feature.start - 0.5, feature.end + 0.5
+        if feature.type in BODY_TYPES and self._min_body > 0:
+            left, right = self._widened(left, right)
 
         facecolor = feature.parm.get("facecolor", style["facecolor"])
         edgecolor = feature.parm.get("edgecolor", style.get("edgecolor", "none"))
@@ -286,7 +311,7 @@ class FeatureTrack(Track):
             edgecolor, facecolor = facecolor, "none"
             linewidth = self.config["outline_width"] * self.theme.stroke
         batch.add(
-            patches.Rectangle((feature.start - 0.5, bottom), width=width, height=part_height),
+            patches.Rectangle((left, bottom), width=right - left, height=part_height),
             facecolor, edgecolor, linewidth, style.get("zorder", 10),
         )
 
@@ -354,17 +379,20 @@ class FeatureTrack(Track):
             Feature(c.start, c.end, c.chr_name, c.strand, c.id, c.height, c.type, c.parm, c.children)
             for c in children
         ]
+        spare =[max(0.0, (c.end - c.start + 1) - self._min_body) / 2.0 for c in children]
         for i in narrow:
             intron = copies[i]
             trim = (min_gap - (intron.end - intron.start + 1)) / 2.0
-            left = next((copies[j] for j in range(i - 1, -1, -1) if copies[j].type in BODY_TYPES), None)
-            right = next((copies[j] for j in range(i + 1, len(copies)) if copies[j].type in BODY_TYPES), None)
+            left = next((j for j in range(i - 1, -1, -1) if copies[j].type in BODY_TYPES), None)
+            right = next((j for j in range(i + 1, len(copies)) if copies[j].type in BODY_TYPES), None)
             if left is not None:
-                left.end -= trim
-                intron.start -= trim
+                cut = min(trim, spare[left])
+                copies[left].end -= cut
+                intron.start -= cut
             if right is not None:
-                right.start += trim
-                intron.end += trim
+                cut = min(trim, spare[right])
+                copies[right].start += cut
+                intron.end += cut
         return copies
 
 

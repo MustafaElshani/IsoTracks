@@ -133,15 +133,15 @@ class Theme:
 
     @property
     def width_mm(self) -> float:
-        if isinstance(self.width, str):
-            try:
-                return COLUMN_WIDTHS[self.width]
-            except KeyError:
-                raise ValueError(
-                    f"unknown width {self.width!r}; use a millimetre value or one of "
-                    f"{sorted(COLUMN_WIDTHS)}"
-                ) from None
-        return float(self.width)
+        if self.width in COLUMN_WIDTHS:
+            return COLUMN_WIDTHS[self.width]
+        try:
+            return float(self.width)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"unknown width {self.width!r}; use a millimetre value or one of "
+                f"{sorted(COLUMN_WIDTHS)}"
+            ) from None
 
     @property
     def width_in(self) -> float:

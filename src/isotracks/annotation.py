@@ -37,6 +37,8 @@ COLUMN_ALIASES: Dict[str, Tuple[str, ...]] = {
 
 _GTF_CACHE: Dict[Tuple[str, float, str], "GeneRecords"] = {}
 _GTF_CACHE_LIMIT = 32
+#: Per GTF file: chromosome -> sorted ``(start, end, strand, gene_name)`` of its genes.
+_SPAN_CACHE: Dict[Tuple[str, float], Dict[str, List[Tuple[int, int, str, str]]]] = {}
 
 
 def parse_gtf_attributes(text: str) -> Dict[str, str]:
@@ -145,6 +147,38 @@ class GtfIndex:
             _GTF_CACHE.pop(next(iter(_GTF_CACHE)))
         _GTF_CACHE[key] = records
         return records
+
+    def genes_overlapping(self, chromosome: str, start: int, end: int,
+                          strand: Optional[str] = None) -> List[str]:
+        """Names of the genes whose transcripts overlap ``start..end``, optionally on one strand."""
+        return [name for low, high, gene_strand, name in self._gene_spans().get(chromosome, [])
+                if low <= end and high >= start and (strand is None or gene_strand == strand)]
+
+    def _gene_spans(self) -> Dict[str, List[Tuple[int, int, str, str]]]:
+        """Every gene's transcribed span, read once per file."""
+        if not self.path or not os.path.exists(self.path):
+            return {}
+        key = (os.path.abspath(self.path), os.path.getmtime(self.path))
+        if key not in _SPAN_CACHE:
+            spans: Dict[Tuple[str, str, str], List[int]] = {}
+            with open(self.path) as handle:
+                for line in handle:
+                    if line[0] == "#":
+                        continue
+                    fields = line.split("\t", 8)
+                    if len(fields) < 9 or fields[2] != "transcript":
+                        continue
+                    name = parse_gtf_attributes(fields[8]).get("gene_name")
+                    if not name:
+                        continue
+                    low, high = int(fields[3]), int(fields[4])
+                    span = spans.setdefault((fields[0], fields[6], name), [low, high])
+                    span[0], span[1] = min(span[0], low), max(span[1], high)
+            by_chromosome: Dict[str, List[Tuple[int, int, str, str]]] = {}
+            for (chromosome, strand, name), (low, high) in spans.items():
+                by_chromosome.setdefault(chromosome, []).append((low, high, strand, name))
+            _SPAN_CACHE[key] = {c: sorted(v) for c, v in by_chromosome.items()}
+        return _SPAN_CACHE[key]
 
     def _scan(self, gene_name: str) -> GeneRecords:
         needle = f'"{gene_name}"'

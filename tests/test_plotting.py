@@ -450,6 +450,87 @@ def test_a_utr_is_shorter_than_the_coding_block_and_hollow(tmp_path):
     assert UTR_TYPES == {"5UTR", "3UTR"}
 
 
+#: Small exons close together, then one far downstream.
+SMALL_EXONS = [(1_000, 1_064), (1_364, 1_428), (1_728, 1_792), (200_000, 200_100)]
+
+
+def _small_exon_track(tmp_path, region, intron_map=None, **config):
+    """A model of :data:`SMALL_EXONS` drawn across *region*."""
+    from isotracks import Canvas
+
+    first, last = SMALL_EXONS[0][0], SMALL_EXONS[-1][1]
+    bed = tmp_path / "long.bed"
+    bed.write_text("\t".join([
+        "chrT", str(first - 1), str(last), "LONG", "0", "+", str(first - 1), str(last), "0",
+        str(len(SMALL_EXONS)),
+        ",".join(str(e - s + 1) for s, e in SMALL_EXONS) + ",",
+        ",".join(str(s - first) for s, _ in SMALL_EXONS) + ",",
+    ]) + "\n")
+    canvas = Canvas()
+    track = canvas.add("TranscriptTrack", file_name=str(bed), label="", **config)
+    canvas.add("CoordinateAxisTrack")
+    canvas.set_intron_map(intron_map)
+    canvas.render(region=region, figsize=(4, 1.2))
+    return track
+
+
+def _body_widths_pt(track):
+    """Printed width of every exon block the track drew, left to right."""
+    blocks = []
+    for collection in track.ax.collections:
+        if collection.get_zorder() == track.config["style"]["intron"]["zorder"]:
+            continue
+        for path in collection.get_paths():
+            xs = track.ax.transData.transform(path.vertices)[:, 0]
+            blocks.append((xs.min(), (xs.max() - xs.min()) * 72.0 / track.ax.figure.dpi))
+    return [width for _, width in sorted(blocks)]
+
+
+def test_a_small_exon_far_from_its_neighbours_is_still_drawn(tmp_path):
+    track = _small_exon_track(tmp_path, ("chrT", 0, 220_000, "+"))
+    widths = _body_widths_pt(track)
+    floor = track.config["min_body_width_pt"] * track.theme.stroke
+    assert len(widths) == len(SMALL_EXONS)
+    assert min(widths) == pytest.approx(floor, rel=0.02), widths
+
+
+def test_widening_an_intron_never_eats_the_exons_beside_it(tmp_path):
+    track = _small_exon_track(tmp_path, ("chrT", 0, 220_000, "+"))
+    from isotracks.tracks.features import BODY_TYPES
+
+    model = next(iter(track.region_data))
+    exons = [c for c in track._spaced_children(model) if c.type in BODY_TYPES]
+    assert len(exons) == len(SMALL_EXONS)
+    for exon, (start, end) in zip(exons, SMALL_EXONS):
+        kept = min(end - start + 1, track._min_body)
+        assert exon.end - exon.start + 1 >= kept - 1e-9
+
+
+def test_exons_wide_enough_to_see_keep_their_true_width(tmp_path):
+    track = _small_exon_track(tmp_path, ("chrT", 900, 1_900, "+"))
+    span_pt = track.ax.get_window_extent().width * 72.0 / track.ax.figure.dpi
+    true_pt = 65 / 1_000 * span_pt
+    assert _body_widths_pt(track)[0] == pytest.approx(true_pt, rel=0.02)
+
+
+def test_the_minimum_exon_width_can_be_turned_off(tmp_path):
+    track = _small_exon_track(tmp_path, ("chrT", 0, 220_000, "+"), min_body_width_pt=0,
+                              min_intron_fraction=0)
+    span_pt = track.ax.get_window_extent().width * 72.0 / track.ax.figure.dpi
+    assert _body_widths_pt(track)[0] == pytest.approx(65 / 220_000 * span_pt, rel=0.02)
+
+
+def test_small_exons_are_drawn_when_introns_are_shortened(tmp_path):
+    from isotracks.introns import build_intron_map
+
+    region = ("chrT", 0, 400_000, "+")
+    track = _small_exon_track(tmp_path, region, build_intron_map(SMALL_EXONS, region, "scaled"))
+    floor = track.config["min_body_width_pt"] * track.theme.stroke
+    widths = _body_widths_pt(track)
+    assert len(widths) == len(SMALL_EXONS)
+    assert min(widths) == pytest.approx(floor, rel=0.02), widths
+
+
 def test_end_density_sits_between_the_clusters_and_the_models(view_kwargs):
     from isotracks.tracks import EndDensityTrack, SiteTrack, TranscriptTrack
 

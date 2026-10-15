@@ -86,6 +86,22 @@ def parse_dataset_spec(text: str) -> Dict[str, List[str]]:
     return parse_groups(text, "datasets")
 
 
+def parse_width(text: str):
+    """``"single"`` to itself and ``"176"`` to 176.0 millimetres."""
+    from .theme import COLUMN_WIDTHS
+
+    if text in COLUMN_WIDTHS:
+        return text
+    try:
+        width = float(text)
+    except ValueError:
+        width = 0.0
+    if width <= 0:
+        raise argparse.ArgumentTypeError(
+            f"{text!r} is not a width; use millimetres or one of {', '.join(COLUMN_WIDTHS)}")
+    return width
+
+
 def parse_region(text: str) -> Tuple[str, int, int, Optional[str]]:
     """``"chr1:1,000,000-1,050,000:+"`` to ``("chr1", 1000000, 1050000, "+")``."""
     parts = text.split(":")
@@ -242,6 +258,10 @@ def add_input_arguments(parser: argparse.ArgumentParser) -> None:
                         help="Least reads per isoform in every condition.")
     select.add_argument("--max-isoforms", type=int, default=12, metavar="N",
                         help="Most isoforms drawn, best supported first; 0 for no limit.")
+    select.add_argument("--antisense", nargs="?", const="window", choices=("window", "whole"),
+                        help="Also draw the genes on the opposite strand in the window, with "
+                             "their isoforms, reads and coverage. 'whole' widens the window "
+                             "to draw them whole.")
 
 
 def add_style_arguments(parser: argparse.ArgumentParser) -> None:
@@ -271,7 +291,7 @@ def add_style_arguments(parser: argparse.ArgumentParser) -> None:
                        help="Use the taller track heights.")
     style.add_argument("--no-gene-model", dest="gene_model", action="store_false",
                        help="Leave out the gene row.")
-    style.add_argument("--width", default="single", metavar="W",
+    style.add_argument("--width", default="single", type=parse_width, metavar="W",
                        help="Printed width: single, onehalf, double, slide, or millimetres.")
     style.add_argument("--readability", default="comfortable",
                        choices=["strict", "comfortable", "large"], help="Type size tier.")
@@ -320,6 +340,7 @@ def view_kwargs(args) -> dict:
         balanced_diff=getattr(args, "balanced_diff", False),
         mod_regions=getattr(args, "mod_regions", MOD_REGIONS_EXONS),
         coverage_reads=getattr(args, "coverage_reads", COVERAGE_DRAWN),
+        antisense=getattr(args, "antisense", None),
         gene_model=getattr(args, "gene_model", True),
         compact=getattr(args, "compact", False),
         min_reads=args.min_reads,

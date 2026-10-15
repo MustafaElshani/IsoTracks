@@ -10,8 +10,6 @@
 **Isoform models, reads with poly(A) tails, RNA modifications, coverage and gene fusions from
 [IsoForge](https://github.com/MustafaElshani/IsoForge) long-read RNA-seq results, one gene per figure.**
 
-Give IsoTracks an IsoForge run:
-
 ```bash
 isotracks plot --gene SAT1 --isoforge results/project --output figures/SAT1
 ```
@@ -23,43 +21,15 @@ plot_gene("SAT1", isoforge="results/project", output="figures/SAT1")
 ```
 
 `results/project` is the prefix IsoForge was run with (`isoforge annotate --write_bam --o results/project`).
-Both write `figures/SAT1.pdf` and `figures/SAT1.png` at journal column width.
-
-For BAM files of your own, or to name the conditions, add them:
-
-```bash
-isotracks plot --gene SAT1 --isoforge results/project \
-    --bam "Control:Control_1.bam,Control_2.bam;Treated:Treated_1.bam,Treated_2.bam" \
-    --output figures/SAT1
-```
-
-```python
-plot_gene(
-    "SAT1",
-    isoforge="results/project",
-    bam_files={"Control": ["Control_1.bam", "Control_2.bam"],
-               "Treated": ["Treated_1.bam", "Treated_2.bam"]},
-    output="figures/SAT1",
-)
-```
+Both write `figures/SAT1.pdf` and `figures/SAT1.png` at journal column width. BAM files of your own are added
+with `--bam` ([BAM files](#bam-files)).
 
 <p align="center"><img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/anatomy.png" alt="An IsoTracks figure" width="420"></p>
 
-## Contents
-
-- [Install](#install)
-- [Input](#input)
-- [The figure](#the-figure)
-- [Isoforms and reads](#isoforms-and-reads)
-- [Views](#views): zoom, close-up, shortened introns, highlights
-- [Fusion transcripts](#fusion-transcripts)
-- [RNA modifications](#rna-modifications)
-- [Tables](#tables)
-- [Appearance](#appearance)
-- [Command line](#command-line)
-- [Python API](#python-api)
-- [Development](#development)
-- [Citation](#citation)
+[Install](#install) · [Input](#input) · [The figure](#the-figure) · [Isoforms and reads](#isoforms-and-reads) ·
+[Views](#views) · [Fusion transcripts](#fusion-transcripts) · [RNA modifications](#rna-modifications) ·
+[Tables](#tables) · [Appearance](#appearance) · [Command line](#command-line) · [Python API](#python-api) ·
+[Development](#development) · [Citation](#citation)
 
 ## Install
 
@@ -68,19 +38,13 @@ pip install isotracks
 ```
 
 Python 3.10 or later; matplotlib, numpy, pandas, pyarrow, pysam and scipy are installed with it. From source:
-
-```bash
-git clone https://github.com/MustafaElshani/IsoTracks
-cd IsoTracks
-pip install .
-```
+`pip install git+https://github.com/MustafaElshani/IsoTracks`.
 
 ## Input
 
 ### An IsoForge run
 
-`--isoforge` (`isoforge=`) takes the prefix IsoForge was run with (`--o results/project`), the run's directory,
-or any one of its files. IsoTracks reads from it:
+`--isoforge` (`isoforge=`) takes the prefix IsoForge was run with, the run's directory, or any one of its files:
 
 | File | Used for |
 |---|---|
@@ -92,24 +56,26 @@ or any one of its files. IsoTracks reads from it:
 | `<prefix>_isoforge_sqanti3.bed` | coding extent of the models, when [IsoForge_Sqanti3](https://github.com/MustafaElshani/IsoForge_Sqanti3) was run |
 
 Any of these can be given on its own instead (`--annotation-gtf`, `--read-annot`, `--tss`, `--polya`,
-`--fusion-table`, `--bam`, `--bed`); an explicit file takes precedence over the run.
-
-Only whole reads of the transcripts IsoForge reports are drawn (`cluster_supported` in the read table).
-`--read-filter all` draws every read in the table.
+`--fusion-table`, `--bam`, `--bed`); an explicit file takes precedence over the run. Only whole reads of the
+transcripts IsoForge reports are drawn (`cluster_supported` in the read table); `--read-filter all` draws every read.
 
 ### BAM files
 
-The sorted, indexed BAMs IsoForge was given (`--bam`) or kept (`--write_bam`). Replicates within a condition are
-pooled into one read stack.
+The sorted, indexed BAMs IsoForge was given or kept. Replicates within a condition are pooled into one read stack.
+From the run, the sample name up to its first underscore is the condition (`Control_1`, `Control_2` → `Control`),
+as IsoForge groups them. `--bam` (`bam_files=`) names the conditions explicitly:
 
-- From the run, samples are grouped as IsoForge groups them: the sample name up to its first underscore is the
-  condition (`Control_1`, `Control_2` → `Control`).
-- With `--bam`, conditions are named explicitly:
+```bash
+isotracks plot --gene SAT1 --isoforge results/project \
+    --bam "Control:Control_1.bam,Control_2.bam;Treated:Treated_1.bam,Treated_2.bam" \
+    --output figures/SAT1
+```
 
-  ```
-  --bam "Control:Control_1.bam,Control_2.bam;Treated:Treated_1.bam,Treated_2.bam"
-  bam_files={"Control": ["Control_1.bam", "Control_2.bam"], "Treated": ["Treated_1.bam", "Treated_2.bam"]}
-  ```
+```python
+plot_gene("SAT1", isoforge="results/project", output="figures/SAT1",
+          bam_files={"Control": ["Control_1.bam", "Control_2.bam"],
+                     "Treated": ["Treated_1.bam", "Treated_2.bam"]})
+```
 
 Poly(A) tail lengths are read from the `pt` tag of the reads, or from the read annotation when the BAM has none.
 
@@ -122,8 +88,6 @@ Poly(A) tail lengths are read from the `pt` tag of the reads, or from the read a
 | `--modkit`, `--dmr` | [RNA modification](#rna-modifications) tracks. |
 
 ## The figure
-
-Top to bottom:
 
 | Track | Shows |
 |---|---|
@@ -140,8 +104,8 @@ Top to bottom:
 
 - Every figure reads 5′ to 3′ from left to right. A minus-strand gene is drawn with the axis reversed.
 - Every read stack has the same height. Its read count is in the gutter (`n = 373`).
-- Coverage is built from the reads of the drawn isoforms. An arc's thickness is the number of reads across
-  that junction.
+- Coverage is built from the reads of the drawn isoforms. An arc's thickness is the number of reads across it.
+- An exon too narrow to see at the figure's scale is drawn a hairline wide, so none is lost in a long gene.
 
 ## Isoforms and reads
 
@@ -154,56 +118,41 @@ Top to bottom:
 | `--coverage-reads` | `drawn` | `gene` builds coverage from every read of the gene |
 | `--sort-style` | `waterfall` | order of reads within a stack |
 
-| `waterfall` | `diamond` |
+| `waterfall`: longest tail at the top | `diamond`: longest tail in the middle |
 |---|---|
 | <img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/sort_waterfall.png" alt="Reads ordered longest tail first" width="330"> | <img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/sort_diamond.png" alt="Reads ordered with the longest tails in the middle" width="330"> |
-| Longest tail at the top. | Longest tail in the middle. |
 
 ## Views
-
-### Zoom
-
-```bash
-isotracks plot --gene SAT1 ... --zoom last_exon
-```
-
-```python
-view.plot(region=view.zoom("last_exon", padding=400))
-```
-
-Targets: `first_exon`, `last_exon`, `exon_<N>`, `5_prime`, `3_prime`, `whole_gene`. Exons are numbered 5′ to 3′.
-A window reaching the 3′ end is widened to fit the longest poly(A) tail.
-
-### A close-up beside the gene
-
-`--detail` (`detail=`) draws a region again beside the whole figure, row for row, at true scale.
 
 | default | `--detail last_exon` |
 |---|---|
 | <img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/copz1_default.png" alt="A gene at true scale" width="330"> | <img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/copz1_detail.png" alt="The same gene with a close-up of its last exon" width="330"> |
+| **`--introns scaled`** | **`--introns fixed`** |
+| <img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/copz1_scaled.png" alt="Introns shrunk by one factor" width="330"> | <img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/copz1_fixed.png" alt="Introns drawn at one width" width="330"> |
+| **`--highlight junction_2 3_utr`** | **`--antisense whole`** |
+| <img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/highlight.png" alt="A junction and a 3′ UTR highlighted" width="330"> | <img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/antisense.png" alt="COPS6 with MCM7, the gene on the opposite strand, drawn whole below it" width="330"> |
 
-It takes `last_exon`, `exon_<N>`, `3_utr`, `junction_<N>`, `3_prime`, `5_prime` or a range. `--detail-share` sets
-the fraction of the width the close-up takes (default 0.4). Depth and read-end density share one scale across
-both panels.
+### Zoom
+
+`--zoom last_exon` (`view.plot(region=view.zoom("last_exon", padding=400))`) draws part of the gene: `first_exon`,
+`last_exon`, `exon_<N>`, `5_prime`, `3_prime` or `whole_gene`. Exons are numbered 5′ to 3′. A window reaching the
+3′ end is widened to fit the longest poly(A) tail.
+
+### A close-up beside the gene
+
+`--detail` (`detail=`) draws a region again beside the whole figure, row for row, at true scale: `last_exon`,
+`exon_<N>`, `3_utr`, `junction_<N>`, `3_prime`, `5_prime` or a range. `--detail-share` sets the fraction of the
+width it takes (default 0.4). Depth and read-end density share one scale across both panels.
 
 ### Shortened introns
 
-| `--introns scaled` | `--introns fixed` |
-|---|---|
-| <img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/copz1_scaled.png" alt="Introns shrunk by one factor" width="330"> | <img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/copz1_fixed.png" alt="Introns drawn at one width" width="330"> |
-| Every intron shrunk by one factor; together they take `--intron-share` of the width (default 0.3). | Every intron drawn at the same small width. |
-
-Exons, flanks and poly(A) tails stay at true scale. Each shortened intron is marked with `//` on the axis.
+`--introns scaled` shrinks every intron by one factor, so that together they take `--intron-share` of the width
+(default 0.3). `--introns fixed` draws every intron at the same small width. Exons, flanks and poly(A) tails stay
+at true scale, and each shortened intron is marked with `//` on the axis.
 
 ### Highlighting a region
 
-`--highlight` (`highlight=`) marks regions with a band through every track.
-
-<p align="center"><img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/highlight.png" alt="A junction and a 3′ UTR highlighted" width="420"></p>
-
-```bash
-isotracks plot --gene SAT1 ... --highlight junction_2 3_utr
-```
+`--highlight` (`highlight=`) marks regions with a band through every track:
 
 ```python
 view.plot(highlight=["junction_2", "3_utr:ENST00000111.1"])
@@ -219,6 +168,20 @@ view.plot(highlight=(31_950_000, 31_951_000), highlight_style="outline")
 
 A named region is measured on the isoform with the most exons, or on the one given after a colon
 (`exon_2:ENST00000111.1`). `--highlight-style` is `both` (a faint box with a dotted edge), `box` or `outline`.
+
+### The opposite strand
+
+`--antisense` (`antisense=True`) also draws the genes transcribed from the opposite strand in the window. Each gets
+a section below the gene's tracks: its gene row, marked with its strand, its isoforms, their reads per condition and
+its coverage, on a depth scale of its own. Its reads run 3′ to 5′ across the figure, so their poly(A) tails point
+left. `--antisense whole` (`antisense="whole"`) widens the window to draw those genes whole.
+
+```bash
+isotracks plot --gene COPS6 --isoforge results/project --antisense whole --output figures/COPS6
+```
+
+Opposite-strand genes are found in the run's GTF, and their isoforms are selected by the same read thresholds as
+the gene's.
 
 ## Fusion transcripts
 
@@ -236,18 +199,16 @@ view = FusionView("RIMS2::ATP6V1C1", isoforge="results/project", reference_gtf="
 view.plot(output="figures/RIMS2_ATP6V1C1")
 ```
 
-<p align="center"><img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/fusion_all.png" alt="A fusion: schematic, sites, fusion gene, transcripts and reads" width="420"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/fusion_all.png" alt="A fusion: schematic, sites, fusion gene, transcripts and reads" width="340"></p>
 
-**The schematic** is drawn at the top of every fusion figure (`--no-fusion-schematic` leaves it out).
+**The schematic** at the top (`--no-fusion-schematic` leaves it out) draws each partner gene whole, 5′ to 3′, as
+its MANE Select isoform, with introns as equal short gaps (not to scale). The fusion's exons are coloured, the rest
+of the gene is grey, and each breakpoint is marked with its coordinate. Below it, the fused transcript is drawn
+exons only, to scale in nucleotides, with its length.
 
 <p align="center"><img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/fusion_schematic.png" alt="The fusion schematic" width="420"></p>
 
-| Row | Shows |
-|---|---|
-| **genes** | each partner whole, 5′ to 3′, as its MANE Select isoform. Introns are drawn as equal short gaps; the row is not to scale. The fusion's exons are coloured, the rest of the gene is grey, and each breakpoint is marked with its coordinate. |
-| **fusion** | the fused transcript, exons only, to scale in nucleotides, with its length |
-
-**The panels** below it follow the gene figure, one panel per partner in transcript order:
+**The panels** follow the gene figure, one panel per partner in transcript order:
 
 | Row | Shows |
 |---|---|
@@ -261,15 +222,13 @@ view.plot(output="figures/RIMS2_ATP6V1C1")
 - Transcripts and reads are joined across the gap between panels: by an intron line where the junction is on
   splice sites at both ends, and by a dotted line where it is not.
 - Introns are shortened within each panel (`--introns scaled` is the default for a fusion).
-- For a fusion of three or more genes, transcripts through every partner are drawn first, then those joining
-  only some. `--fusion-reads complete` draws only the former.
+- For a fusion of three or more genes, transcripts through every partner are drawn first, then those joining only
+  some. `--fusion-reads complete` draws only the former.
 
-**Input.** The fusion tables hold every read, so BAMs are optional: they add the poly(A) tails. Samples are
-grouped into conditions as for a gene; `--conditions "Control:rep1,rep2;Treated:rep3"` names the groups without
-BAMs. `--reference-gtf` gives the schematic each partner's whole gene.
-
-A fusion can also be drawn without IsoForge's tables, from a line of breakpoints with its reads found in the
-BAMs. A junction is `donor>acceptor`, the last base kept upstream and the first kept downstream:
+**Input.** The fusion tables hold every read, so BAMs are optional: they add the poly(A) tails. Samples are grouped
+into conditions as for a gene; `--conditions "Control:rep1,rep2;Treated:rep3"` names the groups without BAMs.
+Without IsoForge's tables, a fusion is drawn from a line of breakpoints, its reads found in the BAMs. A junction is
+`donor>acceptor`, the last base kept upstream and the first kept downstream:
 
 ```python
 FusionView("RIMS2::ATP6V1C1  chr8::chr8  chr8:103501062>chr8:103062955",
@@ -278,24 +237,25 @@ FusionView("RIMS2::ATP6V1C1  chr8::chr8  chr8:103501062>chr8:103062955",
 
 ## RNA modifications
 
+| `--modkit`: modified fraction per site | `--dmr`: change between sample sets |
+|---|---|
+| <img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/modifications.png" alt="Modification tracks per condition" width="330"> | <img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/modification_diff.png" alt="A differential modification track" width="330"> |
+
 Modification tracks are drawn from [`modkit pileup`](https://nanoporetech.github.io/modkit/) bedMethyl files in
 genome coordinates, bgzipped and tabix-indexed, one per replicate:
 
 ```bash
 modkit pileup sample.bam sample.bed --ref genome.fa
 bgzip sample.bed && tabix -p bed sample.bed.gz
-```
 
-```bash
 isotracks plot --gene ACTB --isoforge results/project \
     --modkit "Control:Control_1.bed.gz;Treated:Treated_1.bed.gz" --mods a 17802 \
     --output figures/ACTB
 ```
 
-<p align="center"><img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/modifications.png" alt="Modification tracks per condition" width="420"></p>
-
 Each lollipop is one site; its height is the modified fraction, from 0 to 100%: reads called modified over reads
-assessed at that position. Replicates are pooled by summing counts.
+assessed at that position. Replicates are pooled by summing counts. The gutter reports sites drawn over sites
+assessed (`89/1,933 sites`).
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -303,8 +263,6 @@ assessed at that position. Replicates are pooled by summing counts.
 | `--min-mod-coverage` | 10 | least reads at a site |
 | `--min-mod-fraction` | 0.3 | least modified fraction at a site |
 | `--mod-regions` | `exons` | `window` also draws sites outside the exons of the drawn isoforms |
-
-The gutter reports sites drawn over sites assessed (`89/1,933 sites`).
 
 | Base | Codes |
 |---|---|
@@ -315,24 +273,20 @@ The gutter reports sites drawn over sites assessed (`89/1,933 sites`).
 
 ### Differential modification
 
-`--dmr` draws the change in modified fraction per site from a `modkit dmr pair` site table, sorted, bgzipped
-and tabix-indexed:
+`--dmr` draws the change in modified fraction per site from a `modkit dmr pair` site table, sorted, bgzipped and
+tabix-indexed:
 
 ```bash
 modkit dmr pair -a Control_1.bed.gz -a Control_2.bed.gz -b Treated_1.bed.gz -b Treated_2.bed.gz \
     --ref genome.fa --base A --header -o sites.bed
 grep -v '^#' sites.bed | sort -k1,1 -k2,2n | bgzip > sites.bed.gz
 tabix -p bed sites.bed.gz
-```
 
-```bash
 isotracks plot --gene ACTB ... --dmr "Control vs Treated:sites.bed.gz"
 ```
 
-<p align="center"><img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/modification_diff.png" alt="A differential modification track" width="420"></p>
-
-The axis runs from −100% to +100%. modkit's effect size is `a − b`, so a stem pointing up is a site less
-modified in the second sample set, and a stem pointing down one more modified.
+The axis runs from −100% to +100%. modkit's effect size is `a − b`, so a stem pointing up is a site less modified
+in the second sample set, and a stem pointing down one more modified.
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -342,26 +296,18 @@ modified in the second sample set, and a stem pointing down one more modified.
 
 ## Tables
 
-Coordinates of a gene's isoforms and exons, 1-based and inclusive:
+Isoform and exon coordinates, 1-based and inclusive, and per-read poly(A) tail lengths:
 
 ```bash
 isotracks info --gene SAT1 --isoforge results/project
 isotracks info --gene SAT1 --isoforge results/project --format tsv --exons-table -o exons.tsv
+isotracks polya --gene SAT1 --isoforge results/project -o SAT1_polya.csv
 ```
 
 ```python
 view.print_info()        # the report
 view.isoform_table()     # one row per isoform: exons, length, span, reads
 view.exons()             # one row per exon
-```
-
-Per-read poly(A) tail lengths:
-
-```bash
-isotracks polya --gene SAT1 --isoforge results/project -o SAT1_polya.csv
-```
-
-```python
 view.polya_table()       # gene, transcript_id, condition, sample, read_name, polya_length
 ```
 
@@ -377,7 +323,7 @@ view.polya_table()       # gene, transcript_id, condition, sample, read_name, po
 | `--condition-colors` | hex colours, `"Control:#9AA5B1,Treated:#1B2A49"` |
 | `--formats`, `--dpi` | output formats (default PDF and PNG) and raster resolution (default 600) |
 
-<p align="center"><img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/roomy.png" alt="The same figure with --roomy" width="420"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/MustafaElshani/IsoTracks/main/docs/img/roomy.png" alt="A figure drawn with --roomy" width="330"></p>
 
 Figures are built at the printed width. Isoform colours are Okabe–Ito. PDF output embeds TrueType fonts and SVG
 keeps live text.
@@ -417,7 +363,6 @@ view.plot(detail="last_exon", introns="scaled", highlight="3_utr")
 
 `plot_gene(gene, isoforge=..., output=..., **options)` builds and draws in one call.
 [`examples/`](https://github.com/MustafaElshani/IsoTracks/tree/main/examples) has a script and a notebook.
-
 Tracks can also be stacked directly:
 
 ```python
@@ -438,8 +383,13 @@ pip install -e ".[dev]"
 pytest
 ```
 
-The figures in this README are written by the scripts in [`docs/`](https://github.com/MustafaElshani/IsoTracks/tree/main/docs): `make_examples.py` from synthetic
-data, `make_gene_examples.py` and `make_fusion_example.py` from an IsoForge run, and `make_logo.py`.
+The figures in this README are written by the scripts in
+[`docs/`](https://github.com/MustafaElshani/IsoTracks/tree/main/docs): `make_examples.py` from synthetic data,
+`make_gene_examples.py`, `make_antisense_example.py` and `make_fusion_example.py` from an IsoForge run, and
+`make_logo.py`.
+
+<details>
+<summary>Source layout</summary>
 
 ```
 src/isotracks/
@@ -456,10 +406,12 @@ src/isotracks/
 └── tracks/          one module per track type
 ```
 
+</details>
+
 ## Citation
 
-IsoTracks is a companion tool of IsoForge. The IsoForge manuscript is in preparation. Until it is out, please
-cite the IsoForge repository:
+IsoTracks is a companion tool of IsoForge. The IsoForge manuscript is in preparation. Until it is out, please cite
+the IsoForge repository:
 
 > Elshani M, Zhang Y, Harrison DJ. IsoForge, version 1.0.0. https://github.com/MustafaElshani/IsoForge
 

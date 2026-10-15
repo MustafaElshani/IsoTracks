@@ -471,3 +471,34 @@ def test_input_mistakes_are_reported_without_a_traceback(tmp_path):
     with pytest.raises(SystemExit, match="isotracks: no IsoForge output"):
         main(["plot", "--gene", "SAT1", "--isoforge", str(tmp_path / "missing"),
               "--output", str(tmp_path / "x.png")])
+
+
+def test_width_is_a_preset_or_millimetres():
+    from isotracks.cli import parse_width
+
+    assert parse_width("single") == "single"
+    assert parse_width("176") == 176.0
+    assert parse_width("120.5") == 120.5
+    for bad in ("wide", "0", "-40"):
+        with pytest.raises(argparse.ArgumentTypeError, match="not a width"):
+            parse_width(bad)
+
+
+@pytest.mark.parametrize("width, millimetres", [("176", 176.0), ("double", 183.0)])
+def test_plot_draws_at_the_width_asked_for(view_kwargs, tmp_path, width, millimetres):
+    from isotracks import theme
+
+    output = tmp_path / "out.png"
+    assert main(["plot", "--gene", GENE, *_cli_inputs(view_kwargs), "--width", width,
+                 "--output", str(output), "--quiet"]) == 0
+    assert theme.active().width_mm == millimetres
+    figure = plt.gcf()
+    assert figure.get_figwidth() * 25.4 == pytest.approx(millimetres)
+
+
+def test_batch_takes_a_width_in_millimetres(view_kwargs, tmp_path):
+    genes = tmp_path / "genes.txt"
+    genes.write_text(GENE + "\n")
+    assert main(["batch", "--genes", str(genes), "--outdir", str(tmp_path / "figures"),
+                 "--format", "png", *_cli_inputs(view_kwargs), "--width", "120", "--quiet"]) == 0
+    assert (tmp_path / "figures" / f"{GENE}.png").stat().st_size > 1_000

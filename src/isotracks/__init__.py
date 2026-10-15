@@ -14,7 +14,7 @@ from .theme import Theme
 from .theme import active as active_theme
 from .theme import use as use_theme
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 __all__ = [
     "FusionView",
